@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: infrastore
+  namespace: infrastore
+  annotations:
+    # Choose your ingress class as appropriate (nginx, traefik, etc.)
+    # kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  rules:
+    - host: infrastore.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: infrastore
+                port:
+                  number: 8000

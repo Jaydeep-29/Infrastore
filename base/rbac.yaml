@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: infrastore
+  namespace: infrastore
+  labels:
+    app: infrastore
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: infrastore
+  namespace: infrastore
+  labels:
+    app: infrastore
+rules:
+# Read pod information for debugging
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+
+# Read pod logs
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+
+# Read configmaps and secrets (restricted to specific secret)
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["infrastore-admin"]
+  verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: infrastore
+  namespace: infrastore
+  labels:
+    app: infrastore
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: infrastore
+subjects:
+- kind: ServiceAccount
+  name: infrastore
+  namespace: infrastore

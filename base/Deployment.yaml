@@ -1,0 +1,168 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: infrastore
+  namespace: infrastore
+  labels:
+    app: infrastore
+    version: "1.0.0"
+  annotations:
+    description: "InfraStore REST API - File storage service"
+spec:
+  replicas: 1  # Overridden by overlays
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1  # for local
+      # maxUnavailable: 0  # Zero-downtime updates
+
+  selector:
+    matchLabels:
+      app: infrastore
+  template:
+    metadata:
+      labels:
+        app: infrastore
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: infrastore
+      
+      # Pod-level security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      
+      # High availability: spread pods across nodes and zones
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway # for local test
+          # whenUnsatisfiable: DoNotSchedule 
+          labelSelector:
+            matchLabels:
+              app: infrastore
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - infrastore
+                topologyKey: kubernetes.io/hostname
+
+      # Graceful shutdown
+      terminationGracePeriodSeconds: 60
+      
+      containers:
+      - name: infrastore
+        image: infratestchallenge/infrastore:latest
+        imagePullPolicy: IfNotPresent
+        
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+        
+        envFrom:
+        - secretRef:
+            name: infrastore-admin
+        
+        # Startup probe: for production
+        # startupProbe:
+        #   httpGet:
+        #     path: /api/files/ 
+        #     port: http
+        #   initialDelaySeconds: 5
+        #   periodSeconds: 5
+        #   failureThreshold: 30
+        #   timeoutSeconds: 2
+        
+           # Readiness probe: Local (accepts 404 from /)
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - '[ -n "$(cat /proc/1/comm)" ]'
+          initialDelaySeconds: 20
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 10
+
+        # Readiness probe: ready in <30 seconds. for production
+        # readinessProbe:
+        #   httpGet:
+        #   production
+        #     path: /api/files/
+        #     port: http
+        #   initialDelaySeconds: 10
+        #   periodSeconds: 10
+        #   timeoutSeconds: 3
+        #   failureThreshold: 3
+        
+         # Liveness probe: Local 
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - '[ -n "$(cat /proc/1/comm)" ]'
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 10
+
+        # Liveness probe: restart if unhealthy for 60 seconds for production
+        # livenessProbe:
+        #   httpGet:
+        #   production
+        #     path: /api/files/
+        #     port: http
+        #   initialDelaySeconds: 30
+        #   periodSeconds: 20
+        #   timeoutSeconds: 3
+        #   failureThreshold: 3        
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+        
+        # Container-level security context
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 10001
+          runAsGroup: 10001
+          capabilities:
+            drop:
+            - ALL
+        
+        volumeMounts:
+        - name: media
+          mountPath: /app/media
+        - name: db
+          mountPath: /app/db
+      
+      volumes:
+      - name: media
+        persistentVolumeClaim:
+          claimName: infrastore-media
+      - name: db
+        persistentVolumeClaim:
+          claimName: infrastore-db
