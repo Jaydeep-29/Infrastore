@@ -4,7 +4,7 @@ metadata:
   name: infrastore
   namespace: infrastore
 spec:
-  minAvailable: 2  # Keep at least 2 pods running (increased from 1)
+  minAvailable: 1  
   selector:
     matchLabels:
       app: infrastore

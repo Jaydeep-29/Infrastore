@@ -11,11 +11,10 @@ metadata:
 spec:
   replicas: 1  # Overridden by overlays
   strategy:
-    type: RollingUpdate
+    type: RollingUpdate # Recreate
     rollingUpdate:
       maxSurge: 1
-      maxUnavailable: 1  # for local
-      # maxUnavailable: 0  # Zero-downtime updates
+      maxUnavailable: 1  
 
   selector:
     matchLabels:
@@ -75,9 +74,18 @@ spec:
           containerPort: 8000
           protocol: TCP
         
-        envFrom:
-        - secretRef:
-            name: infrastore-admin
+        env:
+          - name: DJANGO_SUPERUSER_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: infrastore-admin
+                key: DJANGO_SUPERUSER_USERNAME
+
+          - name: DJANGO_SUPERUSER_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: infrastore-admin
+                key: DJANGO_SUPERUSER_PASSWORD
         
         # Startup probe: for production
         # startupProbe:

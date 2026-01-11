@@ -9,8 +9,8 @@ spec:
     kind: Deployment
     name: infrastore
   
-  minReplicas: 3      # At least 3 for high availability
-  maxReplicas: 10     # Don't exceed 10 to control costs
+  minReplicas: 1      # At least 1 for high availability
+  maxReplicas: 1    # change for future scope 
   
   # Metrics to scale on
   metrics:
@@ -37,7 +37,7 @@ spec:
       stabilizationWindowSeconds: 300  # Wait 5 minutes before scaling down
       policies:
       - type: Percent
-        value: 50          # Reduce by 50% max
+        value: 30          # Reduce by 30% max
         periodSeconds: 60
       - type: Pods
         value: 2           # Or reduce by 2 pods max
@@ -52,6 +52,6 @@ spec:
         value: 100         # Double the replicas
         periodSeconds: 30
       - type: Pods
-        value: 5           # Or add 5 pods
+        value: 2          # Or add 2 pods
         periodSeconds: 30
       selectPolicy: Max    # Use most aggressive scaling

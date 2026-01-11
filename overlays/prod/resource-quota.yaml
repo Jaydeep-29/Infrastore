@@ -6,16 +6,16 @@ metadata:
 spec:
   hard:
     # CPU quotas
-    requests.cpu: "10"      # Total requested CPU
-    limits.cpu: "20"        # Total CPU limits
+    requests.cpu: "5"      # Total requested CPU
+    limits.cpu: "15"        # Total CPU limits
     
     # Memory quotas
-    requests.memory: "10Gi"  # Total requested memory
-    limits.memory: "20Gi"    # Total memory limits
+    requests.memory: "5Gi"  # Total requested memory
+    limits.memory: "15Gi"    # Total memory limits
     
     # Pod count
-    pods: "50"              # Max pods in namespace
+    pods: "15"              # Max pods in namespace
     
     # Storage
     persistentvolumeclaims: "5"  # Max PVCs
-    requests.storage: "500Gi"    # Max storage
+    requests.storage: "50Gi"    # Max storage

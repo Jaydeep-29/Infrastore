@@ -1,15 +1,28 @@
 # InfraStore Kubernetes Deployment
-
-A production-ready Kubernetes deployment for the InfraStore REST API with comprehensive security, scalability, and reliability features.
-
 ## Overview
 
-This project deploys InfraStore (a Django-based file storage service) on Kubernetes using Kustomize for environment-specific configuration. The deployment includes all modern Kubernetes best practices for security, high availability, and observability.
+The deployment includes modern Kubernetes best practices for security, reliability, and observability, within the constraints of the provided application.
 
-## ** Key Highlight: Health Checks
-    ## very Important: deployment uses different health check strategies for different environments:
+## ** Key Highlight: 
+    ## very Important: 
+    Health Checks
+    - The deployment uses exec-based health probes by default to ensure compatibility
+      with the provided container image.
+    - HTTP-based probes are documented and recommended for production environments,
+      but are not enabled by default
             Local Development: exec probes (process check) - simple and forgiving
             Production: httpGet probes (application health) - strict and accurate
+
+      - The application runs as a single replica by design because it uses
+      file-based persistence (SQLite) backed by ReadWriteOnce persistent volumes.
+
+      - Horizontal Pod Autoscaling is included as a reference configuration,
+      but scaling beyond one replica is intentionally avoided to prevent
+      database corruption and volume mount conflicts.
+
+      - In a real production environment, the database would be migrated to
+      PostgreSQL and media storage to object storage (e.g., S3 or EFS),
+      after which multi-replica scaling and HPA would be enabled.
 
 ## Project Structure
 
@@ -22,17 +35,19 @@ infrastore-deployment/
        -rbac.yaml                  # RBAC (ServiceAccount, Role, RoleBinding)
        -network-policy.yaml        # Network security policies
        -secret.yaml                # Sealed secrets for credentials
+      -kustomization.yaml         # Base Kustomize configuration
+      -kustomizeconfig.yaml
+    media/
        -pvc-media.yaml             # Media persistent volume claim
        -pvc-db.yaml                # Database persistent volume claim
-       -kustomization.yaml         # Base Kustomize configuration
-
+      
     overlays/
        -local/                     # Local development configuration
         -kustomization.yaml     # Local-specific settings (1 replica, dev probes)
-       -prod/                      # Production configuration
-        -kustomization.yaml     # Production-specific settings (3+ replicas)
-        -hpa.yaml               # Horizontal Pod Autoscaler (3-20 replicas)
-        -pdb.yaml               # Pod Disruption Budget (minAvailable: 2)
+      -prod/                      # Production configuration
+        -kustomization.yaml     # Production-specific settings
+        -hpa.yaml               # Horizontal Pod Autoscaler
+        -pdb.yaml               # Pod Disruption Budget (minAvailable: 1)
         -resource-quota.yaml    # Namespace resource limits
 
     README.md                       # This file
@@ -61,7 +76,7 @@ infrastore-deployment/
 
 ### 4. **Pod Security**
 - Non-root user (UID 10001)
-- Read-only root filesystem where possible
+- Root filesystem write access is enabled to ensure compatibility with the provided application image.
 - No elevated privileges
 - Dropped all Linux capabilities
 - RuntimeDefault seccomp profile
@@ -73,19 +88,14 @@ infrastore-deployment/
 - Topology spread: distributes across availability zones
 - Ensures high availability in multi-node clusters
 
-### 2. **Horizontal Pod Autoscaling (Production)**
-- Scales from 3 to 20 replicas
-- Based on CPU (70% threshold) and memory metrics
-- Respects PDB for safe scaling
-
 ### 3. **Resource Management**
 - CPU requests: 200m, limits: 1000m
 - Memory requests: 256Mi, limits: 1Gi
 - Namespace-level quotas in production
 
 ### 4. **Persistent Storage**
-- Media uploads: local-storage PVC (5Gi)
-- Database: local-storage PVC (5Gi)
+- Media uploads: local-storage PVC (2Gi)
+- Database: local-storage PVC (1Gi)
 - Survives pod restarts and updates
 
 ## Reliability Features
@@ -101,12 +111,18 @@ infrastore-deployment/
 - Clean application shutdown on pod termination
 
 ### 3. **Deployment Strategy**
-- Rolling updates with zero downtime
-- maxSurge: 1 (can temporarily run 2 pods)
-- maxUnavailable: 0 (no pods down during update)
+- The application is deployed as a single replica and may experience
+brief unavailability during updates.
+
+- This trade-off is intentional and ensures safe updates when using
+file-based persistence with ReadWriteOnce volumes.
+
+- For a stateless, database-backed deployment (e.g., PostgreSQL),
+rolling updates with zero downtime would be enabled.
+
 
 ### 4. **Pod Disruption Budget (Production)**
-- minAvailable: 2 pods
+- minAvailable: 1 pods
 - Prevents node maintenance from disrupting service
 - Protects against voluntary disruptions
 
@@ -129,18 +145,10 @@ infrastore-deployment/
 ### 1. Enable Kubernetes (Local Only)
 
 ```bash
-# Open Docker Desktop
-# Settings → Kubernetes → Enable Kubernetes → Apply & Restart
-# Wait 2-3 minutes for cluster to start
+Open Docker Desktop and enable kubernetes after wait 2-3 mins 
 ```
 
-### 2. Create Namespace
-
-```bash
-kubectl create namespace infrastore
-```
-
-### 3. Setup Sealed Secrets
+### 2. Setup Sealed Secrets
 
 ```bash
 # Install sealed-secrets controller
@@ -148,12 +156,15 @@ kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/downloa
 
 # Wait for controller to be ready
 kubectl rollout status deployment/sealed-secrets-controller -n kube-system --timeout=5m
+
+# verify pod has been created
+kubectl get pods -n kube-system | grep sealed-secrets
 ```
 
-### 4. Create and Seal Credentials
+### 3. Create and Seal Credentials
 
 ```bash
-# Create unsealed secret
+# Create unsealed secret 
 kubectl create secret generic infrastore-admin \
   --from-literal=DJANGO_SUPERUSER_USERNAME=admin \
   --from-literal=DJANGO_SUPERUSER_PASSWORD=YourSecurePassword123! \
@@ -164,7 +175,7 @@ kubectl create secret generic infrastore-admin \
 cat base/secret.yaml
 ```
 
-### 5. Deploy to Local Cluster
+### 4. Deploy to Local Cluster
 
 ```bash
 # Navigate to project directory
@@ -174,17 +185,18 @@ cd infrastore-deployment
 kubectl kustomize overlays/local | kubectl apply -f -
 
 # Monitor rollout
-kubectl rollout status deployment/infrastore -n infrastore --timeout=5m
+kubectl rollout status deployment -n infrastore -l app=infrastore --timeout=5m
+
 
 # Check pod status
-kubectl get pods -n infrastore -o wide
+kubectl get pods -n infrastore -l app=infrastore -o wide
 ```
 
-### 6. Test the Application
+### 5. Test the Application
 
 ```bash
 # Port forward to access app locally
-kubectl port-forward -n infrastore svc/infrastore 8080:8000 &
+kubectl port-forward -n infrastore svc/infrastore 8080:8000
 
 # Wait a moment for port-forward to establish
 sleep 2
@@ -204,7 +216,7 @@ After deployment, verify all components are healthy:
 
 ```bash
 # Check pods are Ready
-kubectl get pods -n infrastore -o wide
+kubectl get pods -n infrastore  -l app=infrastore -o wide
 # Expected: STATUS=Running, READY=1/1
 
 # Check deployment
@@ -255,14 +267,11 @@ kubectl kustomize overlays/prod | kubectl apply -f -
 ```
 
 **Configuration:**
-- 3 minimum replicas, up to 20 with HPA
 - Health checks use HTTP endpoints (stricter)
 - maxUnavailable: 0 (zero-downtime)
 - DoNotSchedule for topology spread (strict HA)
 - Pod Disruption Budget protects availability
 - Resource quotas prevent runaway usage
-- Autoscaling based on CPU and memory metrics
-
 
 ### View Logs
 
@@ -286,10 +295,10 @@ kubectl get events -n infrastore --sort-by='.lastTimestamp'
 
 ```bash
 # Check pod status and events
-kubectl describe pod -n infrastore <pod-name>
+kubectl describe pod -n infrastore -l app=infrastore
 
 # Check container logs
-kubectl logs -n infrastore <pod-name>
+kubectl logs -n infrastore -l app=infrastore
 
 # If readiness probe fails, check health endpoint
 kubectl exec -it -n infrastore <pod-name> -- sh
@@ -304,18 +313,18 @@ kubectl get networkpolicies -n infrastore
 
 # Test connectivity from pod
 kubectl exec -it -n infrastore <pod-name> -- sh
-curl https://www.google.com  # Should work (egress to 443)
-curl 8.8.8.8:53 -v          # Should work (DNS on 53)
+curl https://www.google.com  # Test HTTPS egress
+nslookup google.com        # Test DNS resolution
 ```
 
 ### Persistent volume issues
 
 ```bash
 # Check PVC status
-kubectl get pvc -n infrastore
+kubectl get pvc -n infrastore -l app=infrastore
 
 # Describe PVC for details
-kubectl describe pvc infrastore-media -n infrastore
+kubectl describe pvc -n infrastore
 
 # Check physical volume
 kubectl get pv
@@ -325,10 +334,10 @@ kubectl get pv
 
 ```bash
 # Verify ServiceAccount is bound to Role
-kubectl describe rolebinding infrastore -n infrastore
-
+kubectl get role,rolebinding -n infrastore
 # Check role permissions
-kubectl describe role infrastore -n infrastore
+kubectl describe role -n infrastore 
+kubectl describe rolebinding -n infrastore
 
 ```
 
@@ -358,7 +367,7 @@ kubectl delete -f https://github.com/bitnami-labs/sealed-secrets/releases/downlo
 
 For issues or questions:
 
-1. Check pod logs: `kubectl logs deployment/infrastore -n infrastore`
+1. Check pod logs: `kubectl logs -n infrastore -l app=infrastore`
 2. Check events: `kubectl get events -n infrastore`
 3. Describe resources: `kubectl describe pod/deployment/svc -n infrastore`
 4. Review Kubernetes documentation: https://kubernetes.io/docs/

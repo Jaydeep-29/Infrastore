@@ -3,9 +3,10 @@ kind: Kustomization
 
 namespace: infrastore
 
-commonLabels:
-  app: infrastore
-  managed-by: kustomize
+labels:
+  - pairs:
+      app: infrastore
+      managed-by: kustomize
 
 resources:
   - namespace.yaml
@@ -14,5 +15,9 @@ resources:
   - pvc-media.yaml
   - pvc-db.yaml
   - secret.yaml
-  - rbac.yaml          
-  - network-policy.yaml 
+  - rbac.yaml
+  - network-policy.yaml
+
+# Reference transformer config
+configurations:
+  - kustomizeconfig.yaml

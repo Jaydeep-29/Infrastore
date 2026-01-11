@@ -2,7 +2,6 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: infrastore
-namePrefix: prod-
 
 commonLabels:
   environment: production
@@ -19,14 +18,14 @@ resources:
   - resource-quota.yaml 
 
 patches:
-  # Set replicas to 3 for production
+  # Set replicas to 1 for production
   - target:
       kind: Deployment
       name: infrastore
     patch: |-
       - op: replace
         path: /spec/replicas
-        value: 3
+        value: 1
 
   # Increase resource limits for production
   - target:
@@ -45,3 +44,15 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/resources/limits/memory
         value: "2Gi"
+
+    # ROLLING STRATEGY - CRITICAL FIX
+  - target:
+      kind: Deployment
+      name: infrastore
+    patch: |-
+      - op: replace
+        path: /spec/strategy/rollingUpdate/maxSurge
+        value: 0  
+      - op: replace
+        path: /spec/strategy/rollingUpdate/maxUnavailable
+        value: 1  
